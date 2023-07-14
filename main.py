@@ -115,7 +115,7 @@ async def main():
     departures = dict(sorted(departures.items()))
 
     print('<html><head><title>Abfahrten</title>'
-          '<head><style>'
+          '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><style>'
           '.stop {color:#909090}'
           '.line {text-align:right;font-weight:bold;font-family: monospace;font-size: x-large;}'
           '.toolate {text-decoration:line-through;}'
