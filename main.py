@@ -1,95 +1,42 @@
 #!/usr/bin/env python3
 
-import aiohttp
-import asyncio
+from pyhafas import HafasClient
+from pyhafas.profile import DBProfile
 import datetime
-import json
+import zoneinfo
 import re
 
 
-class EFA:
-    """
-    Inspiration: https://finalrewind.org/interblag/entry/efa-json-api/
-    """
-    def __init__(self, url, proximity_search=False):
-        self.dm_url = url + "/XML_DM_REQUEST"
-        self.dm_post_data = {
-            "language": "de",
-            "mode": "direct",
-            "outputFormat": "JSON",
-            "type_dm": "stop",
-            "useProxFootSearch": "0",
-            "useRealtime": "1",
-        }
-
-        if proximity_search:
-            self.dm_post_data["useProxFootSearch"] = "1"
-
-    async def get_departures(self, place, name, ts):
-        self.dm_post_data.update(
-            {
-                "itdDateDay": ts.day,
-                "itdDateMonth": ts.month,
-                "itdDateYear": ts.year,
-                "itdTimeHour": ts.hour,
-                "itdTimeMinute": ts.minute,
-                "name_dm": name,
-            }
-        )
-        if place is None:
-            self.dm_post_data.pop("place_dm", None)
-        else:
-            self.dm_post_data.update({"place_dm": place})
-        async with aiohttp.ClientSession() as session:
-            async with session.post(self.dm_url, data=self.dm_post_data) as response:
-                # EFA may return JSON with a text/html Content-Type, which response.json() does not like.
-                departures = json.loads(await response.text())
-        return departures
-
-
-def extract_departures_filtered(response, target, end_time, dep_filter=None):
-    for dep in response["departureList"]:
+def extract_departures_filtered(departures, target, end_time, dep_filter=None):
+    for dep in departures:
+        if dep.cancelled:
+            continue
         if dep_filter is not None and not dep_filter(dep):
             continue
-        result_item = {"stopName": dep["nameWO"],
-                       "line": dep["servingLine"]["number"],
-                       "direction": re.sub(r'^Hannover[ /]', '', dep["servingLine"]["direction"]),
-                       "plan": {
-                           "year": f'{int(dep["dateTime"]["year"]):04d}',
-                           "month": f'{int(dep["dateTime"]["month"]):02d}',
-                           "day": f'{int(dep["dateTime"]["day"]):02d}',
-                           "hour": f'{int(dep["dateTime"]["hour"]):02d}',
-                           "minute": f'{int(dep["dateTime"]["minute"]):02d}'}}
-        if "realDateTime" in dep:
-            result_item["realtime"] = {
-                "year": f'{int(dep["realDateTime"]["year"]):04d}',
-                "month": f'{int(dep["realDateTime"]["month"]):02d}',
-                "day": f'{int(dep["realDateTime"]["day"]):02d}',
-                "hour": f'{int(dep["realDateTime"]["hour"]):02d}',
-                "minute": f'{int(dep["realDateTime"]["minute"]):02d}'}
+        result_item = {"stopName": re.sub(r'(^Hannover[ /]|, Hannover$| \(Hannover\)$)', '', dep.station.name),
+                       "line": re.sub(r'^(STR|Bus) ', '', dep.name),
+                       "direction": re.sub(r'(^Hannover[ /]|, Hannover$| \(Hannover\)$)', '', dep.direction),
+                       "plan": dep.dateTime}
+        if dep.delay is not None and dep.delay >= datetime.timedelta(minutes=1):
+            result_item["realtime"] = dep.dateTime + dep.delay
         if get_time(result_item) < end_time:
-            target[f'{result_item["plan"]["year"]}-{result_item["plan"]["month"]}-{result_item["plan"]["day"]}'
-                   f'-{result_item["plan"]["hour"]}-{result_item["plan"]["minute"]}-{int(result_item["line"]):03d}'] \
-                = result_item
+            target[f'{dep.dateTime.strftime("%Y-%m-%d-%H-%M")}-{int(result_item["line"]):03d}'] = result_item
 
 
 def get_time(entry):
     if "realtime" not in entry:
-        return datetime.datetime(int(entry["plan"]["year"]), int(entry["plan"]["month"]), int(entry["plan"]["day"]),
-                                 int(entry["plan"]["hour"]), int(entry["plan"]["minute"]))
+        return entry["plan"]
     else:
-        return datetime.datetime(int(entry["realtime"]["year"]), int(entry["realtime"]["month"]),
-                                 int(entry["realtime"]["day"]),
-                                 int(entry["realtime"]["hour"]), int(entry["realtime"]["minute"]))
+        return entry["realtime"]
 
 
 def get_time_str(entry):
     if "realtime" not in entry or entry["realtime"] == entry["plan"]:
-        return f'{entry["plan"]["hour"]}:{entry["plan"]["minute"]} Uhr'
+        return f'{entry["plan"].strftime("%H:%M")} Uhr'
     else:
-        return f'{entry["realtime"]["hour"]}:{entry["realtime"]["minute"]} Uhr ' \
+        return f'{entry["realtime"].strftime("%H:%M")} Uhr ' \
                f'(<span class="toolate">' \
-               f'{entry["plan"]["hour"]}:{entry["plan"]["minute"]} Uhr</span>)'
+               f'{entry["plan"].strftime("%H:%M")} Uhr</span>)'
 
 
 def entry_as_html_tr(entry):
@@ -99,19 +46,21 @@ def entry_as_html_tr(entry):
     return tr
 
 
-async def main():
-    now = datetime.datetime.now()
+if __name__ == "__main__":
+    client = HafasClient(DBProfile())
+    now = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Berlin"))
     end_time = now + datetime.timedelta(minutes=40)
-    response_bahnstrift = await EFA("https://www.efa.de/efa/").get_departures(
-        "Bahnstrift", "Hannover", now)
-    response_alteheide = await EFA("https://www.efa.de/efa/").get_departures(
-        "Alte Heide", "Hannover", now)
+
+    location_bahnstrift = client.locations("Bahnstrift, Hannover")[0]
+    departures_bahnstrift = client.departures(station=location_bahnstrift.id, date=now, max_trips=40)
+    location_alteheide = client.locations("Alte Heide, Hannover")[0]
+    departures_alteheide = client.departures(station=location_alteheide.id, date=now, max_trips=40)
     departures = {}
-    extract_departures_filtered(response_bahnstrift, departures, end_time,
-                                lambda dep: dep["servingLine"]["direction"] != "Hannover/Alte Heide")
-    extract_departures_filtered(response_alteheide, departures, end_time,
-                                lambda dep: dep["servingLine"]["number"] != "2" and
-                                            dep["servingLine"]["number"] != "135")
+    extract_departures_filtered(departures_bahnstrift, departures, end_time,
+                                lambda dep: re.search(r"Alte Heide", dep.direction) is None)
+    extract_departures_filtered(departures_alteheide, departures, end_time,
+                                lambda dep: re.search(r"\b2$", dep.name) is None and
+                                            re.search(r"\b135$", dep.name) is None)
     departures = dict(sorted(departures.items()))
 
     print('<html><head><title>Abfahrten</title>'
@@ -124,7 +73,3 @@ async def main():
     for departure in departures.values():
         print(entry_as_html_tr(departure))
     print('</table></body></html>')
-
-
-if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(main())
