@@ -14,13 +14,13 @@ def extract_departures_filtered(departures, target, end_time, dep_filter=None):
         if dep_filter is not None and not dep_filter(dep):
             continue
         result_item = {"stopName": re.sub(r'(^Hannover[ /]|, Hannover$| \(Hannover\)$)', '', dep.station.name),
-                       "line": re.sub(r'^(STR|Bus) ', '', dep.name),
+                       "line": re.sub(r'[^0-9]', '', dep.name),
                        "direction": re.sub(r'(^Hannover[ /]|, Hannover$| \(Hannover\)$)', '', dep.direction),
                        "plan": dep.dateTime}
         if dep.delay is not None and dep.delay >= datetime.timedelta(minutes=1):
             result_item["realtime"] = dep.dateTime + dep.delay
         if get_time(result_item) < end_time:
-            target[f'{dep.dateTime.strftime("%Y-%m-%d-%H-%M")}-{int(re.sub(r"[^0-9]", "", result_item["line"])):03d}'] = result_item
+            target[f'{dep.dateTime.strftime("%Y-%m-%d-%H-%M")}-{int(result_item["line"]):03d}'] = result_item
 
 
 def get_time(entry):
