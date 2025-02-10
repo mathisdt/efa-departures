@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 from pyhafas import HafasClient
-from pyhafas.profile import DBProfile
 import datetime
 import zoneinfo
 import re
+
+from gvh import GVHProfile
 
 
 def extract_departures_filtered(departures, target, end_time, dep_filter=None):
@@ -47,14 +48,14 @@ def entry_as_html_tr(entry):
 
 
 if __name__ == "__main__":
-    client = HafasClient(DBProfile())
+    client = HafasClient(GVHProfile())
     now = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Berlin"))
     end_time = now + datetime.timedelta(minutes=40)
 
     location_bahnstrift = client.locations("Bahnstrift, Hannover")[0]
-    departures_bahnstrift = client.departures(station=location_bahnstrift.id, date=now, max_trips=40)
+    departures_bahnstrift = client.departures(station=location_bahnstrift, date=now, max_trips=40)
     location_alteheide = client.locations("Alte Heide, Hannover")[0]
-    departures_alteheide = client.departures(station=location_alteheide.id, date=now, max_trips=40)
+    departures_alteheide = client.departures(station=location_alteheide, date=now, max_trips=40)
     departures = {}
     extract_departures_filtered(departures_bahnstrift, departures, end_time,
                                 lambda dep: re.search(r"Alte Heide", dep.direction) is None)
