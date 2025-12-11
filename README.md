@@ -23,4 +23,4 @@ anzuzeigen.
 # Technische Voraussetzungen
 
 * Python 3.9 oder neuer
-* pyhafas 0.4.0 oder neuer (siehe `requirements.txt`)
+* pyhafas 0.6.1 oder neuer (siehe `requirements.txt`)
