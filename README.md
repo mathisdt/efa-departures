@@ -24,3 +24,9 @@ anzuzeigen.
 
 * Python 3.9 oder neuer
 * pyhafas 0.6.1 oder neuer (siehe `requirements.txt`)
+
+## Lizenz
+
+Die Lizenz des Projekts ist GPL v3. Durch einreichen bzw. beitragen von Änderungen
+werden diese automatisch auch unter der GPL v3 lizensiert. Wenn das nicht gewünscht
+ist, bitte den Beitrag (z.B. Pull Request) nicht einreichen!
