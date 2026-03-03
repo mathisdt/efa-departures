@@ -1,2 +1,2 @@
 pyhafas==0.6.1
-pytz==2026.1
+pytz==2026.1.post1
